@@ -213,7 +213,9 @@ try:
 
     df = pd.read_csv(io.StringIO(contents.decoded_content.decode()))
     df = df[df["Year"].notna()]
-    df["Year"] = df["Year"].astype(str)
+    df["Year"] = df["Year"].astype(str).str.strip()
+    df = df[~df["Year"].str.contains("RAMPatientQuestions", case=False, na=False)]
+
 
     available_years = sorted(df["Year"].unique())
     col1, col2 = st.columns(2)
