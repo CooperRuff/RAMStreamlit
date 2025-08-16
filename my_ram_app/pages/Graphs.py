@@ -93,6 +93,7 @@ try:
                 fig = px.line(year_summary, x="Year", y=single_axis,
                               title=f"{single_axis} Over Time")
 
+            render_plotly_chart(fig, filename_hint=f"{single_axis}_{uni_chart_type.replace(' ', '_')}")
 
     # ---------------------------
     # QUESTION CHART TYPE
@@ -105,7 +106,7 @@ try:
                 question_map[prefix] = matches
 
         selected_question = st.selectbox("Select Question", list(question_map.keys()))
-        question_chart_type = st.selectbox("Chart Style", ["Pie", "Bar (Grouped by Year)", "Bar (Stacked by Year)"])
+        question_chart_type = st.selectbox("Chart Style", ["Pie", "Bar (Grouped by Year)", "Bar (Stacked)"])
 
         if selected_question in question_map:
             question_cols = question_map[selected_question]
@@ -118,13 +119,14 @@ try:
                 totals["Answer"] = totals["Answer"].str.replace(f"{selected_question} - ", "")
                 fig = px.pie(totals, names="Answer", values="Count",
                              title=f"{selected_question} Responses")
-
+                render_plotly_chart(fig, filename_hint=f"{selected_question}_pie")
             elif question_chart_type == "Bar (Grouped by Year)":
                 grouped = pie_data.groupby("Year")[question_cols].sum().reset_index()
                 melted = grouped.melt(id_vars="Year", var_name="Answer", value_name="Count")
                 melted["Answer"] = melted["Answer"].str.replace(f"{selected_question} - ", "")
                 fig = px.bar(melted, x="Answer", y="Count", color="Year", barmode="group",
                              title=f"{selected_question} Responses by Year")
+                render_plotly_chart(fig, filename_hint=f"{selected_question}_bar_grouped")
             elif question_chart_type == "Bar (Grouped by Year)":
                 grouped = pie_data.groupby("Year")[question_cols].sum().reset_index()
                 melted = grouped.melt(id_vars="Year", var_name="Answer", value_name="Count")
@@ -132,8 +134,6 @@ try:
                 fig = px.bar(melted, x="Year", y="Count", color="Answer", barmode="group",
                             title=f"{selected_question} Responses by Year")
                 render_plotly_chart(fig, filename_hint=f"{selected_question}_bar_grouped")
-
-
 
     # ---------------------------
     # MULTIVARIATE CHART TYPES
@@ -181,6 +181,8 @@ try:
                             yaxis=dict(range=[0, max(y_np)*1.05])
                         )
 
+                        render_plotly_chart(fig, filename_hint=f"{y_col}_vs_{x_axis}_scatter")
+
                         st.markdown(f"**Linear Regression Equation:**  \n`y = {m:.3f}x + {b:.3f}`")
                         st.markdown(f"**R² = {r_squared:.4f}**")
 
@@ -194,6 +196,8 @@ try:
                     fig = px.line(grouped, x=x_axis, y=valid_y_axes, title=chart_title)
                 elif chart_type == "Area":
                     fig = px.area(grouped, x=x_axis, y=valid_y_axes, title=chart_title)
+
+                render_plotly_chart(fig, filename_hint=f"{chart_type}_{'_'.join(valid_y_axes)}_by_{x_axis}")
 
 except Exception as e:
     st.error(f"❌ Error loading data: {e}")
