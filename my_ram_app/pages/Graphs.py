@@ -5,9 +5,9 @@ from github import Github
 import pydeck as pdk
 
 # CONFIGURATION
-GITHUB_TOKEN = 'your_token_here'
+GITHUB_TOKEN = st.secrets["password"]
 REPO_NAME = 'CooperRuff/RAMStreamlit'
-FILE_PATH = 'Combined_RAM_Services.csv'
+FILE_PATH = 'Combined_RAM_Services_with_zip.csv'
 KEYWORDS = ["Glasses", "Extractions", "Fillings", "Cleanings", "Medical Exams"]
 
 st.title("🗺️ RAM Clinic Map & Totals")
