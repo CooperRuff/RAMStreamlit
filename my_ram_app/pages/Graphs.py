@@ -9,7 +9,7 @@ import numpy as np
 from io import BytesIO
 
 # --- CONFIGURATION ---
-GITHUB_TOKEN = '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'
+GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 REPO_NAME = 'CooperRuff/RAMStreamlit'
 FILE_PATH = 'Combined_RAM_Services_with_zip.csv'
 
