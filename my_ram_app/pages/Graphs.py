@@ -29,17 +29,9 @@ QUESTION_PREFIXES = [
 ]
 
 # --- HELPER: Chart Downloader ---
-def render_plotly_chart(fig, filename_hint):
-    st.plotly_chart(fig)
-    buf = BytesIO()
-    fig.write_image(buf, format="png")
-    buf.seek(0)
-    st.download_button(
-        label="📥 Download Chart as PNG",
-        data=buf,
-        file_name=f"{filename_hint}.png",
-        mime="image/png"
-    )
+def render_plotly_chart(fig, filename_hint=None):
+    st.plotly_chart(fig, use_container_width=True)
+
 
 # --- MAIN APP ---
 st.title("📈 RAM Data Graphs")
