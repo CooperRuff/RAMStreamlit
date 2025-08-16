@@ -146,6 +146,19 @@ def build_aligned_row(file, location, year, uploaded_filename, existing_columns)
     row_data.update(new_columns)
     return row_data, list(new_columns.keys())
 
+# ---------------------- HELPER FUNCTION TO LOAD DATA ----------------------
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def load_github_data():
+    """Load data from GitHub with error handling"""
+    try:
+        g = Github(GITHUB_TOKEN)
+        repo = g.get_repo(REPO_NAME)
+        contents = repo.get_contents(FILE_PATH)
+        df = pd.read_csv(io.StringIO(contents.decoded_content.decode()))
+        return df, None
+    except Exception as e:
+        return None, str(e)
+
 # ---------------------- MAIN WORKFLOW ----------------------
 
 if uploaded_file and year and location:
@@ -183,12 +196,15 @@ if uploaded_file and year and location:
             )
 
             st.success("✅ Data added and pushed to GitHub!")
+            # Clear cache after successful upload
+            st.cache_data.clear()
         except Exception as e:
             st.error(f"🚨 Error: {e}")
 
 # ---------------------- KEYWORD SUMMARY ----------------------
 
-st.subheader("📈 Keyword Totals Summary")
+st.subheader("📊 Year-over-Year Keyword Comparison")
+
 try:
     g = Github(GITHUB_TOKEN)
     repo = g.get_repo(REPO_NAME)
@@ -196,64 +212,81 @@ try:
 
     df = pd.read_csv(io.StringIO(contents.decoded_content.decode()))
     df = df[df["Year"].notna()]
-    df["Year"] = df["Year"].astype(str).str.strip()
-    df = df[~df["Year"].str.contains("RAMPatientQuestions", case=False, na=False)]
+    df["Year"] = df["Year"].astype(str)
 
     available_years = sorted(df["Year"].unique())
-    selected_year = st.selectbox("Filter by Year", options=available_years)
+    col1, col2 = st.columns(2)
+    with col1:
+        year_current = st.selectbox("Current Year", options=available_years, index=len(available_years) - 1)
+    with col2:
+        year_prior = st.selectbox("Prior Year", options=available_years, index=len(available_years) - 2 if len(available_years) > 1 else 0)
 
-    summary_data = []
+    comparison = []
     for kw in KEYWORDS:
-        total_all = df[kw].sum() if kw in df.columns else 0
-        total_selected = df[df["Year"] == selected_year][kw].sum() if kw in df.columns else 0
-        summary_data.append({
-            "Keyword": kw,
-            "All Years": int(total_all),
-            f"{selected_year}": int(total_selected)
-        })
+        if kw in df.columns:
+            current_total = df[df["Year"] == year_current][kw].sum()
+            prior_total = df[df["Year"] == year_prior][kw].sum()
+            variance = current_total - prior_total
+            pct_change = (variance / prior_total * 100) if prior_total != 0 else np.nan
+            comparison.append({
+                "Keyword": kw,
+                f"{year_prior}": int(prior_total),
+                f"{year_current}": int(current_total),
+                "Variance": int(variance),
+                "% Change": f"{pct_change:.1f}%" if not np.isnan(pct_change) else "N/A"
+            })
 
-    summary_df = pd.DataFrame(summary_data)
-    st.table(summary_df)
+    comp_df = pd.DataFrame(comparison)
+
+    def highlight_large(val):
+        try:
+            val_float = float(val.strip('%'))
+            if abs(val_float) > 25:
+                return "color: red; font-weight: bold"
+        except:
+            return ""
+        return ""
+
+    st.dataframe(comp_df.style.applymap(highlight_large, subset=["Variance", "% Change"]).set_properties(**{
+        'font-weight': 'bold'
+    }, subset=[f"{year_prior}", f"{year_current}"]))
 except Exception as e:
-    st.warning(f"⚠️ Unable to build keyword summary table: {e}")
-
+    st.warning(f"⚠️ Unable to build year-over-year summary: {e}")
 # ---------------------- QUESTION SUMMARY ----------------------
 
 st.subheader("📋 Question Summary Table")
 
-try:
-    df = pd.read_csv(io.StringIO(contents.decoded_content.decode()))
-    df = df[df["Year"].notna()]
-    df["Year"] = df["Year"].astype(str).str.strip()
-    df = df[~df["Year"].str.contains("RAMPatientQuestions", case=False, na=False)]
+# Use the same loaded data
+if df is not None:
+    try:
+        # Find all question-like columns
+        question_map = {}
+        all_columns = df.columns.tolist()
 
+        for prefix in QUESTION_PREFIXES:
+            matches = [col for col in all_columns if col.startswith(prefix + " - ")]
+            if matches:
+                question_map[prefix] = matches
 
-    # Find all question-like columns
-    question_map = {}
-    all_columns = df.columns.tolist()
+        if not question_map:
+            st.info("No question-format columns found.")
+        else:
+            selected_question = st.selectbox("Select a Question", list(question_map.keys()))
+            if selected_question in question_map:
+                question_cols = question_map[selected_question]
+                df_question = df[["Year"] + question_cols].copy()
+                df_question[question_cols] = df_question[question_cols].apply(pd.to_numeric, errors="coerce")
 
-    for prefix in QUESTION_PREFIXES:
-        matches = [col for col in all_columns if col.startswith(prefix + " - ")]
-        if matches:
-            question_map[prefix] = matches
+                # Group by year and sum
+                grouped = df_question.groupby("Year")[question_cols].sum().T
+                grouped.index = grouped.index.str.replace(f"{selected_question} - ", "")
 
-    if not question_map:
-        st.info("No question-format columns found.")
-    else:
-        selected_question = st.selectbox("Select a Question", list(question_map.keys()))
-        if selected_question in question_map:
-            question_cols = question_map[selected_question]
-            df_question = df[["Year"] + question_cols].copy()
-            df_question[question_cols] = df_question[question_cols].apply(pd.to_numeric, errors="coerce")
+                # Add totals row
+                grouped["Total"] = grouped.sum(axis=1)
 
-            # Group by year and sum
-            grouped = df_question.groupby("Year")[question_cols].sum().T
-            grouped.index = grouped.index.str.replace(f"{selected_question} - ", "")
+                st.dataframe(grouped)
 
-            # Add totals row
-            grouped["Total"] = grouped.sum(axis=1)
-
-            st.dataframe(grouped)
-
-except Exception as e:
-    st.warning(f"⚠️ Unable to build question summary table: {e}")
+    except Exception as e:
+        st.warning(f"⚠️ Unable to build question summary table: {e}")
+else:
+    st.warning("⚠️ Unable to load data for question summary table.")

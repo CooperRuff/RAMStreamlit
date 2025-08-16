@@ -4,4 +4,3 @@ plotly
 pgeocode
 PyGithub
 kaleido
-numpy
