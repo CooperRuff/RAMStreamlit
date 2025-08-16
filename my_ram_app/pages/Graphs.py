@@ -127,13 +127,20 @@ try:
                 fig = px.bar(melted, x="Answer", y="Count", color="Year", barmode="group",
                              title=f"{selected_question} Responses by Year")
                 render_plotly_chart(fig, filename_hint=f"{selected_question}_bar_grouped")
-            elif question_chart_type == "Bar (Grouped by Year)":
+            elif question_chart_type == "Bar (Stacked by Year)":
                 grouped = pie_data.groupby("Year")[question_cols].sum().reset_index()
                 melted = grouped.melt(id_vars="Year", var_name="Answer", value_name="Count")
                 melted["Answer"] = melted["Answer"].str.replace(f"{selected_question} - ", "")
-                fig = px.bar(melted, x="Year", y="Count", color="Answer", barmode="group",
-                            title=f"{selected_question} Responses by Year")
-                render_plotly_chart(fig, filename_hint=f"{selected_question}_bar_grouped")
+                fig = px.bar(
+                    melted,
+                    x="Year",
+                    y="Count",
+                    color="Answer",
+                    barmode="stack",
+                    title=f"{selected_question} Responses by Year (Stacked)"
+                )
+                render_plotly_chart(fig, filename_hint=f"{selected_question}_bar_stacked")
+
 
     # ---------------------------
     # MULTIVARIATE CHART TYPES
