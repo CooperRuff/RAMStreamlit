@@ -1,6 +1,6 @@
+streamlit
 pandas
-numpy
 plotly
-kaleido
-PyGithub
 pgeocode
+PyGithub
+kaleido
