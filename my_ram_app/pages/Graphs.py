@@ -105,7 +105,7 @@ try:
                 question_map[prefix] = matches
 
         selected_question = st.selectbox("Select Question", list(question_map.keys()))
-        question_chart_type = st.selectbox("Chart Style", ["Pie", "Bar (Grouped by Year)"])
+        question_chart_type = st.selectbox("Chart Style", ["Pie", "Bar (Grouped by Year)", "Bar (Stacked by Year)"])
 
         if selected_question in question_map:
             question_cols = question_map[selected_question]
@@ -125,6 +125,14 @@ try:
                 melted["Answer"] = melted["Answer"].str.replace(f"{selected_question} - ", "")
                 fig = px.bar(melted, x="Answer", y="Count", color="Year", barmode="group",
                              title=f"{selected_question} Responses by Year")
+            elif question_chart_type == "Bar (Grouped by Year)":
+                grouped = pie_data.groupby("Year")[question_cols].sum().reset_index()
+                melted = grouped.melt(id_vars="Year", var_name="Answer", value_name="Count")
+                melted["Answer"] = melted["Answer"].str.replace(f"{selected_question} - ", "")
+                fig = px.bar(melted, x="Year", y="Count", color="Answer", barmode="group",
+                            title=f"{selected_question} Responses by Year")
+                render_plotly_chart(fig, filename_hint=f"{selected_question}_bar_grouped")
+
 
 
     # ---------------------------
