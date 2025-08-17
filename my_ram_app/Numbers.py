@@ -6,7 +6,7 @@ import io
 from github import Github
 
 # CONFIGURATION
-GITHUB_TOKEN = st.secrets["password"]
+GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 REPO_NAME = 'CooperRuff/RAMStreamlit'
 FILE_PATH = 'Combined_RAM_Services_with_zip.csv'
 
@@ -103,13 +103,7 @@ def update_total_columns(row_data, all_columns):
             None
         )
         if total_col:
-            total_sum = 0
-            for col in matching_cols:
-                val = row_data.get(col, 0)
-                try:
-                    total_sum += float(val)
-                except (ValueError, TypeError):
-                    continue
+            total_sum = sum(float(row_data.get(col, 0) or 0) for col in matching_cols)
             row_data[total_col] = total_sum
 
 def build_aligned_row(file, location, year, uploaded_filename, existing_columns):
@@ -122,55 +116,38 @@ def build_aligned_row(file, location, year, uploaded_filename, existing_columns)
     row_data["File Name"] = uploaded_filename
 
     keyword_values = assign_from_sheet(file, "One Pager", "One Pager Summary", KEYWORDS, existing_columns)
-    for key, val in keyword_values.items():
-        if key in row_data:
-            row_data[key] = val
-        else:
-            new_columns[key] = val
+    row_data.update({k: keyword_values.get(k, 0) for k in keyword_values})
 
     file.seek(0)
-    service_values = extract_service_numbers(file, existing_columns + list(new_columns.keys()))
-    for key, val in service_values.items():
-        if key in row_data:
-            row_data[key] = val
-        else:
-            new_columns[key] = val
+    service_values = extract_service_numbers(file, existing_columns + list(keyword_values.keys()))
+    row_data.update({k: service_values.get(k, 0) for k in service_values})
 
     file.seek(0)
-    answer_values = extract_answer_counts(file, existing_columns + list(new_columns.keys()))
-    for key, val in answer_values.items():
-        if key in row_data:
-            row_data[key] = val
-        else:
-            new_columns[key] = val
+    answer_values = extract_answer_counts(file, existing_columns + list(service_values.keys()))
+    row_data.update({k: answer_values.get(k, 0) for k in answer_values})
 
-    row_data.update(new_columns)
-    return row_data, list(new_columns.keys())
-
-# ---------------------- HELPER FUNCTION TO LOAD DATA ----------------------
-@st.cache_data(ttl=300)  # Cache for 5 minutes
-def load_github_data():
-    """Load data from GitHub with error handling"""
-    try:
-        g = Github(GITHUB_TOKEN)
-        repo = g.get_repo(REPO_NAME)
-        contents = repo.get_contents(FILE_PATH)
-        df = pd.read_csv(io.StringIO(contents.decoded_content.decode()))
-        return df, None
-    except Exception as e:
-        return None, str(e)
+    return row_data, list(set(keyword_values.keys()) | set(service_values.keys()) | set(answer_values.keys()))
 
 # ---------------------- MAIN WORKFLOW ----------------------
 
 if uploaded_file and year and location:
+    try:
+        g = Github(GITHUB_TOKEN)
+        repo = g.get_repo(REPO_NAME)
+        contents = repo.get_contents(FILE_PATH)
+        existing_df = pd.read_csv(io.StringIO(contents.decoded_content.decode()))
+    except Exception as e:
+        st.error(f"🚨 Could not load existing data: {e}")
+        st.stop()
+
+    file_name = uploaded_file.name
+    if "File Name" in existing_df.columns and file_name in existing_df["File Name"].values:
+        st.warning(f"⚠️ This file ('{file_name}') has already been uploaded.")
+        st.stop()
+
     if st.button("Submit and Upload"):
         try:
-            g = Github(GITHUB_TOKEN)
-            repo = g.get_repo(REPO_NAME)
-            contents = repo.get_contents(FILE_PATH)
-            existing_df = pd.read_csv(io.StringIO(contents.decoded_content.decode()))
             existing_columns = existing_df.columns.tolist()
-
             st.info("⏳ Processing your Excel file...")
             uploaded_file.seek(0)
             new_row_dict, new_keys = build_aligned_row(
@@ -197,7 +174,6 @@ if uploaded_file and year and location:
             )
 
             st.success("✅ Data added and pushed to GitHub!")
-            # Clear cache after successful upload
             st.cache_data.clear()
         except Exception as e:
             st.error(f"🚨 Error: {e}")
@@ -215,7 +191,6 @@ try:
     df = df[df["Year"].notna()]
     df["Year"] = df["Year"].astype(str).str.strip()
     df = df[~df["Year"].str.contains("RAMPatientQuestions", case=False, na=False)]
-
 
     available_years = sorted(df["Year"].unique())
     col1, col2 = st.columns(2)
@@ -255,41 +230,39 @@ try:
     }, subset=[f"{year_prior}", f"{year_current}"]))
 except Exception as e:
     st.warning(f"⚠️ Unable to build year-over-year summary: {e}")
+
 # ---------------------- QUESTION SUMMARY ----------------------
 
 st.subheader("📋 Question Summary Table")
 
-# Use the same loaded data
-if df is not None:
-    try:
-        # Find all question-like columns
-        question_map = {}
-        all_columns = df.columns.tolist()
+try:
+    df = pd.read_csv(io.StringIO(contents.decoded_content.decode()))
+    df = df[df["Year"].notna()]
+    df["Year"] = df["Year"].astype(str).str.strip()
+    df = df[~df["Year"].str.contains("RAMPatientQuestions", case=False, na=False)]
 
-        for prefix in QUESTION_PREFIXES:
-            matches = [col for col in all_columns if col.startswith(prefix + " - ")]
-            if matches:
-                question_map[prefix] = matches
+    question_map = {}
+    all_columns = df.columns.tolist()
 
-        if not question_map:
-            st.info("No question-format columns found.")
-        else:
-            selected_question = st.selectbox("Select a Question", list(question_map.keys()))
-            if selected_question in question_map:
-                question_cols = question_map[selected_question]
-                df_question = df[["Year"] + question_cols].copy()
-                df_question[question_cols] = df_question[question_cols].apply(pd.to_numeric, errors="coerce")
+    for prefix in QUESTION_PREFIXES:
+        matches = [col for col in all_columns if col.startswith(prefix + " - ")]
+        if matches:
+            question_map[prefix] = matches
 
-                # Group by year and sum
-                grouped = df_question.groupby("Year")[question_cols].sum().T
-                grouped.index = grouped.index.str.replace(f"{selected_question} - ", "")
+    if not question_map:
+        st.info("No question-format columns found.")
+    else:
+        selected_question = st.selectbox("Select a Question", list(question_map.keys()))
+        if selected_question in question_map:
+            question_cols = question_map[selected_question]
+            df_question = df[["Year"] + question_cols].copy()
+            df_question[question_cols] = df_question[question_cols].apply(pd.to_numeric, errors="coerce")
 
-                # Add totals row
-                grouped["Total"] = grouped.sum(axis=1)
+            grouped = df_question.groupby("Year")[question_cols].sum().T
+            grouped.index = grouped.index.str.replace(f"{selected_question} - ", "")
+            grouped["Total"] = grouped.sum(axis=1)
 
-                st.dataframe(grouped)
+            st.dataframe(grouped)
 
-    except Exception as e:
-        st.warning(f"⚠️ Unable to build question summary table: {e}")
-else:
-    st.warning("⚠️ Unable to load data for question summary table.")
+except Exception as e:
+    st.warning(f"⚠️ Unable to build question summary table: {e}")
