@@ -6,7 +6,7 @@ import io
 from github import Github
 
 # CONFIGURATION
-GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
+GITHUB_TOKEN = st.secrets["password"]
 REPO_NAME = 'CooperRuff/RAMStreamlit'
 FILE_PATH = 'Combined_RAM_Services_with_zip.csv'
 
